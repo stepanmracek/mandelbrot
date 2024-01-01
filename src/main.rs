@@ -2,12 +2,13 @@ extern crate sdl2;
 use itertools::Itertools;
 use num::complex::Complex;
 use rayon::prelude::*;
+use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::mouse;
+use sdl2::mouse::MouseState;
+use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::Canvas;
 use sdl2::surface::Surface;
 use sdl2::video::Window;
-use sdl2::{event::Event, pixels::PixelFormatEnum};
 use std::time::{Duration, Instant};
 
 fn mandelbrot(c: Complex<f64>, iterations: u32) -> Option<u32> {
@@ -131,7 +132,7 @@ pub fn main() -> Result<(), String> {
             }
         }
 
-        let mouse_state = mouse::MouseState::new(&event_pump);
+        let mouse_state = MouseState::new(&event_pump);
         if mouse_state.left() {
             let d = view_port.1 - view_port.0;
             let click_point = x_y_to_complex(
