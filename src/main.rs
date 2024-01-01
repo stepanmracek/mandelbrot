@@ -1,13 +1,13 @@
 extern crate sdl2;
-use itertools::{self, Itertools};
+use itertools::Itertools;
 use num::complex::Complex;
 use rayon::prelude::*;
-use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse;
-use sdl2::pixels::Color;
 use sdl2::render::Canvas;
+use sdl2::surface::Surface;
 use sdl2::video::Window;
+use sdl2::{event::Event, pixels::PixelFormatEnum};
 use std::time::{Duration, Instant};
 
 fn mandelbrot(c: Complex<f64>, iterations: u32) -> Option<u32> {
@@ -42,32 +42,43 @@ pub fn draw_fractal(
     iterations: u32,
 ) -> Result<(), String> {
     let window_size = canvas.window().size();
-    let (w, h) = window_size;
+    let (width, height) = window_size;
 
     let stamp = Instant::now();
-    let coords = (0..w as i32)
-        .cartesian_product(0..h as i32)
+    let coords = (0..height as i32)
+        .cartesian_product(0..width as i32)
         .collect::<Vec<_>>();
     let set = coords
         .par_iter()
-        .map(|(x, y)| {
+        .map(|(y, x)| {
             let c = x_y_to_complex(*x, *y, &window_size, view_port);
-            (x, y, mandelbrot(c, iterations))
+            mandelbrot(c, iterations)
         })
         .collect::<Vec<_>>();
     let elapsed = Instant::now() - stamp;
     println!("Computation time {elapsed:?}");
 
     let stamp = Instant::now();
-    for (x, y, i) in set {
-        if let Some(iter) = i {
-            let c = (255 * iter / iterations) as u8;
-            canvas.set_draw_color(Color::RGB(c / 2, c, c));
-        } else {
-            canvas.set_draw_color(Color::RGB(0, 0, 0));
-        }
-        canvas.draw_point((*x, *y))?;
-    }
+    let mut data = set
+        .into_iter()
+        .flat_map(|i| {
+            if let Some(iter) = i {
+                let c = (255 * iter / iterations) as u8;
+                [c / 2, c, c]
+            } else {
+                [0, 0, 0]
+            }
+        })
+        .collect::<Vec<_>>();
+    let surface = Surface::from_data(&mut data, width, height, width * 3, PixelFormatEnum::RGB24)
+        .map_err(|e| e.to_string())?;
+    let texture_creator = canvas.texture_creator();
+    let texture = texture_creator
+        .create_texture_from_surface(surface)
+        .map_err(|e| e.to_string())?;
+    canvas
+        .copy(&texture, None, None)
+        .map_err(|e| e.to_string())?;
     let elapsed = Instant::now() - stamp;
     println!("Rendering time {elapsed:?}");
 
