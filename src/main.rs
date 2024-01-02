@@ -2,13 +2,13 @@ extern crate sdl2;
 use itertools::Itertools;
 use num::complex::Complex;
 use rayon::prelude::*;
-use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseState;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::render::Canvas;
 use sdl2::surface::Surface;
-use sdl2::video::Window;
+use sdl2::video::{Window, WindowContext};
+use sdl2::{event::Event, render::TextureCreator};
 use std::time::{Duration, Instant};
 
 fn mandelbrot(c: Complex<f64>, iterations: u32) -> Option<u32> {
@@ -39,6 +39,8 @@ fn x_y_to_complex(
 
 pub fn draw_fractal(
     canvas: &mut Canvas<Window>,
+    texture_creator: &TextureCreator<WindowContext>,
+    y_x_coords: &[(i32, i32)],
     view_port: &(Complex<f64>, Complex<f64>),
     iterations: u32,
 ) -> Result<(), String> {
@@ -46,10 +48,7 @@ pub fn draw_fractal(
     let (width, height) = window_size;
 
     let stamp = Instant::now();
-    let coords = (0..height as i32)
-        .cartesian_product(0..width as i32)
-        .collect::<Vec<_>>();
-    let set = coords
+    let data = y_x_coords
         .par_iter()
         .map(|(y, x)| {
             let c = x_y_to_complex(*x, *y, &window_size, view_port);
@@ -60,7 +59,7 @@ pub fn draw_fractal(
     println!("Computation time {elapsed:?}");
 
     let stamp = Instant::now();
-    let mut data = set
+    let mut data = data
         .into_iter()
         .flat_map(|i| {
             if let Some(iter) = i {
@@ -71,12 +70,13 @@ pub fn draw_fractal(
             }
         })
         .collect::<Vec<_>>();
+
     let surface = Surface::from_data(&mut data, width, height, width * 3, PixelFormatEnum::RGB24)
         .map_err(|e| e.to_string())?;
-    let texture_creator = canvas.texture_creator();
     let texture = texture_creator
         .create_texture_from_surface(surface)
         .map_err(|e| e.to_string())?;
+
     canvas
         .copy(&texture, None, None)
         .map_err(|e| e.to_string())?;
@@ -90,16 +90,29 @@ pub fn draw_fractal(
 pub fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
+    const WIDTH: u32 = 800;
+    const HEIGHT: u32 = 600;
 
     let window = video_subsystem
-        .window("Mandelbrot explorer", 800, 600)
+        .window("Mandelbrot explorer", WIDTH, HEIGHT)
         .build()
         .map_err(|e| e.to_string())?;
 
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
+    let texture_creator = canvas.texture_creator();
     let mut view_port = (Complex::new(-2.0, -1.5), Complex::new(2.0, 1.5));
-    let mut iterations = 100;
-    draw_fractal(&mut canvas, &view_port, iterations)?;
+    let mut iterations = 200;
+    let y_x_coords = (0..HEIGHT as i32)
+        .cartesian_product(0..WIDTH as i32)
+        .collect::<Vec<_>>();
+
+    draw_fractal(
+        &mut canvas,
+        &texture_creator,
+        &y_x_coords,
+        &view_port,
+        iterations,
+    )?;
 
     let mut event_pump = sdl_context.event_pump()?;
     'running: loop {
@@ -116,7 +129,13 @@ pub fn main() -> Result<(), String> {
                 } => {
                     iterations += 100;
                     println!("Increasing iterations count to {iterations}");
-                    draw_fractal(&mut canvas, &view_port, iterations)?;
+                    draw_fractal(
+                        &mut canvas,
+                        &texture_creator,
+                        &y_x_coords,
+                        &view_port,
+                        iterations,
+                    )?;
                 }
                 Event::KeyDown {
                     keycode: Some(Keycode::KpMinus),
@@ -125,7 +144,13 @@ pub fn main() -> Result<(), String> {
                     if iterations > 100 {
                         iterations -= 100;
                         println!("Decreasing iterations count to {iterations}");
-                        draw_fractal(&mut canvas, &view_port, iterations)?;
+                        draw_fractal(
+                            &mut canvas,
+                            &texture_creator,
+                            &y_x_coords,
+                            &view_port,
+                            iterations,
+                        )?;
                     }
                 }
                 _ => {}
@@ -153,12 +178,24 @@ pub fn main() -> Result<(), String> {
                 view_port.1.re - d.re * 0.1 * (1.0 - rel_click.re),
                 view_port.1.im - d.im * 0.1 * (1.0 - rel_click.im),
             );
-            draw_fractal(&mut canvas, &view_port, iterations)?;
+            draw_fractal(
+                &mut canvas,
+                &texture_creator,
+                &y_x_coords,
+                &view_port,
+                iterations,
+            )?;
         } else if mouse_state.right() {
             let d = view_port.1 - view_port.0;
             view_port.0 -= d * 0.1;
             view_port.1 += d * 0.1;
-            draw_fractal(&mut canvas, &view_port, iterations)?;
+            draw_fractal(
+                &mut canvas,
+                &texture_creator,
+                &y_x_coords,
+                &view_port,
+                iterations,
+            )?;
         }
         std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
     }
